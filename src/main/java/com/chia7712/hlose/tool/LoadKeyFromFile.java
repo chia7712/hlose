@@ -252,10 +252,11 @@ public final class LoadKeyFromFile {
     }
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 1) {
-      throw new RuntimeException("Where is the row file?");
+    if (args.length != 2) {
+      throw new RuntimeException("Where is the row file? <file> <remove?>");
     }
     File rowKeyFile = new File(args[0]);
+    boolean remove = Boolean.valueOf(args[1]);
     final byte[] family = Bytes.toBytes("fm");
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
@@ -275,6 +276,10 @@ public final class LoadKeyFromFile {
         .setBlockCacheEnabled(true));
     try (Connection conn = ConnectionFactory.createConnection();
       Admin admin = conn.getAdmin();) {
+      if (remove && admin.tableExists(name)) {
+        admin.disableTable(name);
+        admin.deleteTable(name);
+      }
       admin.createTable(desc);
       Supplier<Table> supplier = new Supplier<Table> () {
 
