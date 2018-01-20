@@ -184,6 +184,7 @@ public final class LoadKeyFromFile {
           public void apply(byte[] bytes) throws IOException {
             switch (rowCollector.size()) {
               case 0:
+              case 1:
                 rowCollector.add(bytes);
                 break;
               default:
