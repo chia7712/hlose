@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -57,13 +58,9 @@ public final class RowQueueBuilder<T> {
     return this;
   }
 
-  public RowQueueBuilder<T> setRowStart(long rowStart) {
-    this.rowStart = rowStart;
-    return this;
-  }
-
-  public RowQueueBuilder<T> setRowEnd(long rowEnd) {
-    this.rowEnd = rowEnd;
+  public RowQueueBuilder<T> setRowRange(long start, long end) {
+    this.rowStart = Math.min(start, end);
+    this.rowEnd = Math.max(start, end);
     return this;
   }
 
@@ -117,11 +114,20 @@ public final class RowQueueBuilder<T> {
     return close;
   }
 
+  private void check() {
+    if (CollectionUtils.isEmpty(consumers)) {
+      throw new RuntimeException("Empty consumers");
+    }
+    Objects.requireNonNull(supplier);
+    Objects.requireNonNull(function);
+  }
+
   public RowQueue<T> build() {
     return build(Executors.newFixedThreadPool(1 + consumers.size()));
   }
 
   private RowQueue<T> build(Executor executor) {
+    check();
     final Supplier<RowLoader> supplier = this.supplier;
     final RowFunction<T> function = this.function;
     final BlockingQueue<T> rows = new ArrayBlockingQueue<>(capacity);
@@ -205,16 +211,6 @@ public final class RowQueueBuilder<T> {
       @Override
       public long getAcceptedRowCount() {
         return acceptedRows.get();
-      }
-
-      @Override
-      public long getRowStart() {
-        return rowStart;
-      }
-
-      @Override
-      public long getRowEnd() {
-        return rowEnd;
       }
     };
 

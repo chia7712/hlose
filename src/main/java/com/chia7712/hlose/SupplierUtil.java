@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Delete;
@@ -19,6 +21,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public final class SupplierUtil {
+  private static final Log LOG = LogFactory.getLog(SupplierUtil.class);
   public static Supplier<Table> toTable(Connection conn, TableName name) {
     return new Supplier<Table>() {
       @Override
@@ -54,11 +57,15 @@ public final class SupplierUtil {
   }
 
   public static Supplier<RowConsumer<Delete>> toDeleteConsumer(Connection conn, TableName name, int batch) {
+    return toDeleteConsumer(toTable(conn, name), batch);
+  }
+
+  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(Supplier<Table> supplier, int batch) {
     return new Supplier<RowConsumer<Delete>>() {
       @Override
       public RowConsumer<Delete> generate() throws IOException {
         return new RowConsumer<Delete>() {
-          private final Table t = toTable(conn, name).generate();
+          private final Table t = supplier.generate();
           private final List<Delete> deletes = new ArrayList<>(batch);
           @Override
           public void close() throws Exception {
@@ -88,12 +95,12 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowConsumer<Put>> toPutConsumer(Connection conn, TableName name, int batch) {
+  public static Supplier<RowConsumer<Put>> toPutConsumer(Supplier<Table> supplier, int batch) {
     return new Supplier<RowConsumer<Put>>() {
       @Override
       public RowConsumer<Put> generate() throws IOException {
         return new RowConsumer<Put>() {
-          private final Table t = toTable(conn, name).generate();
+          private final Table t = supplier.generate();
           private final List<Put> puts = new ArrayList<>(batch);
           @Override
           public void close() throws Exception {
@@ -123,12 +130,13 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowLoader> toRowLoader(Table table, Scan scan) {
+  public static Supplier<RowLoader> toRowLoader(Supplier<Table> supplier, Scan scan) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
         return new RowLoader() {
-          private final ResultScanner scanner = toResultScanner(table, scan).generate();
+          private final Table table = supplier.generate();
+          private final ResultScanner scanner = table.getScanner(scan);
           private final Iterator<Result> iter = scanner.iterator();
           @Override
           public boolean hasNext() {
@@ -142,7 +150,8 @@ public final class SupplierUtil {
 
           @Override
           public void close() throws Exception {
-            scanner.close();
+            SupplierUtil.close(scanner);
+            SupplierUtil.close(table);
           }
         };
       }
@@ -194,5 +203,12 @@ public final class SupplierUtil {
         };
       }
     };
+  }
+  private static void close(AutoCloseable c) {
+    try {
+      c.close();
+    } catch (Exception e) {
+      LOG.error(e);
+    }
   }
 }
