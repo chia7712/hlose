@@ -252,6 +252,10 @@ public final class LoadKeyFromFile {
     }
   }
   public static void main(String[] args) throws Exception {
+    if (args.length != 1) {
+      throw new RuntimeException("Where is the row file?");
+    }
+    File rowKeyFile = new File(args[0]);
     final byte[] family = Bytes.toBytes("fm");
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
@@ -286,19 +290,13 @@ public final class LoadKeyFromFile {
         .setDeleteRowRange(671655L, 20582714L)
         .setPutBatch(30)
         .setDeleteBatch(30)
-        .setKeyFile(new File("/home/chia7712/rowkey.log"))
+        .setKeyFile(rowKeyFile)
         .setPutThread(5)
         .setDeleteBatch(5)
         .setValue(new byte[15])
         .setTableSupplier(supplier)
         .run(alters);
       LOG.info("[CHIA] result:" + result);
-      assertNotEquals(0, result.getPutCount());
-      assertNotEquals(0, result.getDeleteCount());
-      for (Counter counter : result.getCounters()) {
-        assertEquals("counter:" + counter, result.getPutCount() - result.getDeleteCount()
-          , counter.get());
-      }
     }
   }
 }
