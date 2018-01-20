@@ -112,10 +112,10 @@ public final class LoadKeyFromFile {
     check();
     final long putCount = runPut();
     final long deleteCount = runDelete();
-    List<Counter> counters = new ArrayList<>(alters.size());
-    for (Alter alter : alters) {
-      List<byte[]> collector = new ArrayList<>(2);
-      long count = runCount(alter, collector);
+    final List<Counter> counters = new ArrayList<>(alters.size());
+    for (final Alter alter : alters) {
+      final List<byte[]> collector = new ArrayList<>(2);
+      final long count = runCount(alter, collector);
       counters.add(new Counter() {
         @Override
         public Alter getAlter() {
@@ -170,7 +170,7 @@ public final class LoadKeyFromFile {
     };
   }
 
-  private long runCount(Alter alter, List<byte[]> rowCollector) throws Exception{
+  private long runCount(Alter alter, final List<byte[]> rowCollector) throws Exception{
     Supplier<RowConsumer<byte[]>> supplier = new Supplier<RowConsumer<byte[]>>() {
       @Override
       public RowConsumer<byte[]> generate() throws IOException {
@@ -255,7 +255,7 @@ public final class LoadKeyFromFile {
     final byte[] family = Bytes.toBytes("fm");
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
-    TableName name = TableName.valueOf("testLoadLargeData");
+    final TableName name = TableName.valueOf("testLoadLargeData");
     HTableDescriptor desc = new HTableDescriptor(name);
     desc.setRegionReplication(1).addFamily(
       new HColumnDescriptor(family)

@@ -84,9 +84,9 @@ public final class RowQueueBuilder<T> {
     return this;
   }
 
-  private CountDownLatch invokeConsumer(Executor executor, RowTaker<T> rows) {
+  private CountDownLatch invokeConsumer(Executor executor, final RowTaker<T> rows) {
     final CountDownLatch close = new CountDownLatch(consumers.size());
-    for (Supplier<RowConsumer<T>> consumerSupplier : consumers) {
+    for (final Supplier<RowConsumer<T>> consumerSupplier : consumers) {
       try {
         executor.execute(new Runnable() {
           @Override
@@ -189,7 +189,7 @@ public final class RowQueueBuilder<T> {
       }
     };
 
-    CountDownLatch consumerLatch = invokeConsumer(executor, taker);
+    final CountDownLatch consumerLatch = invokeConsumer(executor, taker);
     return new RowQueue<T>() {
       @Override
       public void await() throws InterruptedException {

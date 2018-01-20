@@ -22,7 +22,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public final class SupplierUtil {
   private static final Log LOG = LogFactory.getLog(SupplierUtil.class);
-  public static Supplier<Table> toTable(Connection conn, TableName name) {
+  public static Supplier<Table> toTable(final Connection conn, final TableName name) {
     return new Supplier<Table>() {
       @Override
       public Table generate() throws IOException {
@@ -30,7 +30,7 @@ public final class SupplierUtil {
       }
     };
   }
-  public static Supplier<ResultScanner> toResultScanner(Table table, Scan scan) {
+  public static Supplier<ResultScanner> toResultScanner(final Table table, final Scan scan) {
     return new Supplier<ResultScanner>() {
       @Override
       public ResultScanner generate() throws IOException {
@@ -60,7 +60,7 @@ public final class SupplierUtil {
     return toDeleteConsumer(toTable(conn, name), batch);
   }
 
-  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(Supplier<Table> supplier, int batch) {
+  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(final Supplier<Table> supplier, final int batch) {
     return new Supplier<RowConsumer<Delete>>() {
       @Override
       public RowConsumer<Delete> generate() throws IOException {
@@ -95,7 +95,7 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowConsumer<Put>> toPutConsumer(Supplier<Table> supplier, int batch) {
+  public static Supplier<RowConsumer<Put>> toPutConsumer(final Supplier<Table> supplier, final int batch) {
     return new Supplier<RowConsumer<Put>>() {
       @Override
       public RowConsumer<Put> generate() throws IOException {
@@ -130,7 +130,7 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowLoader> toRowLoader(Supplier<Table> supplier, Scan scan) {
+  public static Supplier<RowLoader> toRowLoader(final Supplier<Table> supplier, final Scan scan) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
@@ -149,6 +149,11 @@ public final class SupplierUtil {
           }
 
           @Override
+          public void remove() {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
           public void close() throws Exception {
             SupplierUtil.close(scanner);
             SupplierUtil.close(table);
@@ -159,7 +164,7 @@ public final class SupplierUtil {
 
   }
 
-  public static Supplier<RowLoader> toRowLoader(File file) {
+  public static Supplier<RowLoader> toRowLoader(final File file) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
@@ -169,6 +174,11 @@ public final class SupplierUtil {
           @Override
           public void close() throws Exception {
             r.close();
+          }
+
+          @Override
+          public void remove() {
+            throw new UnsupportedOperationException();
           }
 
           @Override
