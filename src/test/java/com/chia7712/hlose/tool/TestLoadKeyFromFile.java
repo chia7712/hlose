@@ -31,7 +31,6 @@ public class TestLoadKeyFromFile {
   private static final byte[] FAMILY = Bytes.toBytes("fm");
   private static final List<byte[]> QUALIFIERS =
     Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
-  private static final boolean PRE_SPLIT = false;
   @BeforeClass
   public static void beforeClass() throws Exception {
     UTIL.startMiniCluster(1);
@@ -44,7 +43,7 @@ public class TestLoadKeyFromFile {
 
   @Test(timeout = 2000000)
   public void testLoadLargeData() throws Exception {
-    TableName name = TableName.valueOf("testLoadLargeData");
+    final TableName name = TableName.valueOf("testLoadLargeData");
     HTableDescriptor desc = new HTableDescriptor(name);
     desc.setRegionReplication(1).addFamily(
       new HColumnDescriptor(FAMILY)
@@ -58,13 +57,7 @@ public class TestLoadKeyFromFile {
         .setBlocksize(65536)
         .setInMemory(false)
         .setBlockCacheEnabled(true));
-    if (PRE_SPLIT) {
-      byte[][] split = new byte[][] {
-        Bytes.toBytes("G000007301O_T00000Ox01t_0_63a79701-59ec-437d-8534-fa8bfe90fbbb_M00000Eg") };
-      UTIL.getHBaseAdmin().createTable(desc, split);
-    } else {
-      UTIL.getHBaseAdmin().createTable(desc);
-    }
+    UTIL.getHBaseAdmin().createTable(desc);
     Supplier<Table> supplier = new Supplier<Table> () {
 
       @Override
@@ -75,8 +68,8 @@ public class TestLoadKeyFromFile {
     List<Alter> alters = Arrays.asList(Alter.values());
 
     Result result = LoadKeyFromFile.newJob(FAMILY, QUALIFIERS)
-      .setPutRowRange(0, Long.MAX_VALUE)
-      .setDeleteRowRange(671655L, 20582714L)
+      .setPutRowRange(0, 20000000L)
+      .setDeleteRowRange(671655L, 1671655L)
       .setPutBatch(30)
       .setDeleteBatch(30)
       .setKeyFile(new File("/home/chia7712/rowkey.log"))

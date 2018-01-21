@@ -1,0 +1,41 @@
+ext {
+  isCdh = System.properties['dep'] == 'cdh'
+  versions = [:]
+  libs = [:]
+}
+
+if (isCdh) {
+  versions += [
+    hbase: "1.2.0-cdh5.7.0",
+    hadoop: "2.6.0-cdh5.7.0",
+    guava: "12.0.1",
+    directory: "2.0.0-M15",
+    junit: "4.12",
+    tomcat: "5.5.23",
+    mockito: "1.10.19"
+  ]
+} else {
+  versions += [
+    hbase: "1.5.0-SNAPSHOT",
+    hadoop: "2.7.4",
+    guava: "12.0.1",
+    directory: "2.0.0-M15",
+    junit: "4.12",
+    tomcat: "5.5.23",
+    mockito: "1.10.19"
+  ]
+}
+
+libs += [
+  hbaseClient: "org.apache.hbase:hbase-client:$versions.hbase",
+  hbaseServer: "org.apache.hbase:hbase-server:$versions.hbase",
+  hbaseHadoopCompat: "org.apache.hbase:hbase-hadoop-compat:$versions.hbase",
+  hbaseHadoop2Compat: "org.apache.hbase:hbase-hadoop2-compat:$versions.hbase",
+  hadoopCommon: "org.apache.hadoop:hadoop-common:$versions.hadoop",
+  hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:$versions.hadoop",
+  guava: "com.google.guava:guava:$versions.guava",
+  directory: "org.apache.directory.server:apacheds-i18n:$versions.directory",
+  junit: "junit:junit:$versions.junit",
+  tomcat: "tomcat:jasper-compiler:$versions.tomcat",
+  mockito: "org.mockito:mockito-all:$versions.mockito"
+]
