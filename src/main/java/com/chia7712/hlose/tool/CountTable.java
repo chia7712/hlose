@@ -45,8 +45,7 @@ public class CountTable {
 
       List<Counter> counters = new ArrayList<>(alters.size());
       for (Alter alter : alters) {
-        Scan scan = new Scan().setFilter(new FirstKeyOnlyFilter());
-        Counter counter = runCount(supplier, scan, alter);
+        Counter counter = runCount(supplier, new Scan(), alter);
         LOG.info("[CHIA] " + counter);
         counters.add(counter);
       }
