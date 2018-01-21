@@ -1,8 +1,5 @@
 package com.chia7712.hlose.tool;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-
 import com.chia7712.hlose.RowConsumer;
 import com.chia7712.hlose.RowFunction;
 import com.chia7712.hlose.RowQueue;
@@ -51,8 +48,6 @@ public final class LoadKeyFromFile {
   private int deleteThreads = 5;
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
-  private boolean enablePut = true;
-  private boolean enableDelete = true;
   private Supplier<Table> tableSupplier;
   private File keyFile;
   private Scan scan = new Scan();
@@ -76,14 +71,7 @@ public final class LoadKeyFromFile {
     this.deleteRowEnd = Math.max(rowStart, rowEnd);
     return this;
   }
-  LoadKeyFromFile setPutEnable(boolean enablePut) {
-    this.enablePut = enablePut;
-    return this;
-  }
-  LoadKeyFromFile setDeleteEnable(boolean enableDelete) {
-    this.enableDelete = enableDelete;
-    return this;
-  }
+
   LoadKeyFromFile setPutBatch(int batch) {
     this.putBatch = batch;
     return this;
@@ -120,40 +108,11 @@ public final class LoadKeyFromFile {
 
   Result run(List<Alter> alters) throws Exception {
     check();
-    final long putCount = enablePut ? runPut() : -1;
-    final long deleteCount = enableDelete ? runDelete() : -1;
+    final long putCount = runPut();
+    final long deleteCount = runDelete();
     final List<Counter> counters = new ArrayList<>(alters.size());
     for (final Alter alter : alters) {
-      final List<byte[]> collector = new ArrayList<>(2);
-      final long count = runCount(alter, collector);
-      counters.add(new Counter() {
-        @Override
-        public Alter getAlter() {
-          return alter;
-        }
-
-        @Override
-        public long get() {
-          return count;
-        }
-
-        @Override
-        public byte[] getStartRow() {
-          return collector.isEmpty() ? null : collector.get(0);
-        }
-
-        @Override
-        public byte[] getEndRow() {
-          return collector.isEmpty() ? null : collector.get(collector.size() - 1);
-        }
-
-        @Override
-        public String toString() {
-          return alter.name() + ":" + count
-              + "[" + (getStartRow() == null ? "null" : Bytes.toStringBinary(getStartRow())) + "]"
-              + "[" + (getEndRow() == null ? "null" : Bytes.toStringBinary(getEndRow())) + "]";
-        }
-      });
+      counters.add(CountTable.runCount(tableSupplier, scan, alter));
     }
     return new Result() {
 
@@ -178,41 +137,6 @@ public final class LoadKeyFromFile {
             + " " + counters.toString();
       }
     };
-  }
-
-  private long runCount(Alter alter, final List<byte[]> rowCollector) throws Exception{
-    Supplier<RowConsumer<byte[]>> supplier = new Supplier<RowConsumer<byte[]>>() {
-      @Override
-      public RowConsumer<byte[]> generate() throws IOException {
-        return new RowConsumer<byte[]>() {
-
-          @Override
-          public void close() throws Exception {
-          }
-
-          @Override
-          public void apply(byte[] bytes) throws IOException {
-            switch (rowCollector.size()) {
-              case 0:
-              case 1:
-                rowCollector.add(bytes);
-                break;
-              default:
-                rowCollector.set(1, bytes);
-                break;
-            }
-          }
-        };
-      }
-    };
-    try (RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
-      .setPrefix(alter.name())
-      .setRowLoader(SupplierUtil.toRowLoader(tableSupplier, scan))
-      .addConsumer(supplier)
-      .build()) {
-      queue.await();
-      return queue.getAcceptedRowCount();
-    }
   }
 
   private long runDelete() throws Exception {
@@ -263,12 +187,10 @@ public final class LoadKeyFromFile {
     }
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 3) {
-      throw new RuntimeException("Where is the row file? <file> <remove?> <readOnly?>");
+    if (args.length != 1) {
+      throw new RuntimeException("Where is the row file? <file>");
     }
     File rowKeyFile = new File(args[0]);
-    boolean remove = Boolean.valueOf(args[1]);
-    boolean readOnly = Boolean.valueOf(args[2]);
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
     final TableName name = TableName.valueOf("testLoadLargeData");
@@ -287,17 +209,12 @@ public final class LoadKeyFromFile {
         .setBlockCacheEnabled(true));
     try (Connection conn = ConnectionFactory.createConnection();
       Admin admin = conn.getAdmin();) {
-      if (!readOnly && remove && admin.tableExists(name)) {
+      if (admin.tableExists(name)) {
         admin.disableTable(name);
         admin.deleteTable(name);
       }
-      byte[] family;
-      if (admin.tableExists(name)) {
-        family = admin.getTableDescriptor(name).getColumnFamilies()[0].getName();
-      } else {
-        family = desc.getColumnFamilies()[0].getName();
-        admin.createTable(desc);
-      }
+      byte[] family = desc.getColumnFamilies()[0].getName();
+      admin.createTable(desc);
       Supplier<Table> supplier = new Supplier<Table> () {
 
         @Override
@@ -308,8 +225,6 @@ public final class LoadKeyFromFile {
       List<Alter> alters = Arrays.asList(Alter.values());
 
       Result result = LoadKeyFromFile.newJob(family, qualifiers)
-        .setPutEnable(readOnly ? false : true)
-        .setDeleteEnable(readOnly ? false : true)
         .setPutRowRange(0, Long.MAX_VALUE)
         .setDeleteRowRange(671655L, 20582714L)
         .setPutBatch(30)
