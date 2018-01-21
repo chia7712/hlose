@@ -51,6 +51,8 @@ public final class LoadKeyFromFile {
   private int deleteThreads = 5;
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
+  private boolean enablePut = true;
+  private boolean enableDelete = true;
   private Supplier<Table> tableSupplier;
   private File keyFile;
   private Scan scan = new Scan();
@@ -72,6 +74,14 @@ public final class LoadKeyFromFile {
   LoadKeyFromFile setDeleteRowRange(long rowStart, long rowEnd) {
     this.deleteRowStart = Math.min(rowStart, rowEnd);
     this.deleteRowEnd = Math.max(rowStart, rowEnd);
+    return this;
+  }
+  LoadKeyFromFile setPutEnable(boolean enablePut) {
+    this.enablePut = enablePut;
+    return this;
+  }
+  LoadKeyFromFile setDeleteEnable(boolean enableDelete) {
+    this.enableDelete = enableDelete;
     return this;
   }
   LoadKeyFromFile setPutBatch(int batch) {
@@ -110,8 +120,8 @@ public final class LoadKeyFromFile {
 
   Result run(List<Alter> alters) throws Exception {
     check();
-    final long putCount = runPut();
-    final long deleteCount = runDelete();
+    final long putCount = enablePut ? runPut() : -1;
+    final long deleteCount = enableDelete ? runDelete() : -1;
     final List<Counter> counters = new ArrayList<>(alters.size());
     for (final Alter alter : alters) {
       final List<byte[]> collector = new ArrayList<>(2);
@@ -163,8 +173,8 @@ public final class LoadKeyFromFile {
       }
       @Override
       public String toString() {
-        return "putCount:" + putCount
-            + " deleteCount:" + deleteCount
+        return "putCount:" + (putCount < 0 ? "N/A" : putCount)
+            + " deleteCount:" + (deleteCount < 0 ? "N/A" : deleteCount)
             + " " + counters.toString();
       }
     };
@@ -253,11 +263,12 @@ public final class LoadKeyFromFile {
     }
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 2) {
-      throw new RuntimeException("Where is the row file? <file> <remove?>");
+    if (args.length != 3) {
+      throw new RuntimeException("Where is the row file? <file> <remove?> <readOnly?>");
     }
     File rowKeyFile = new File(args[0]);
     boolean remove = Boolean.valueOf(args[1]);
+    boolean readOnly = Boolean.valueOf(args[2]);
     final byte[] family = Bytes.toBytes("fm");
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
@@ -292,6 +303,8 @@ public final class LoadKeyFromFile {
       List<Alter> alters = Arrays.asList(Alter.values());
 
       Result result = LoadKeyFromFile.newJob(family, qualifiers)
+        .setPutEnable(readOnly ? false : true)
+        .setDeleteEnable(readOnly ? false : true)
         .setPutRowRange(0, Long.MAX_VALUE)
         .setDeleteRowRange(671655L, 20582714L)
         .setPutBatch(30)
