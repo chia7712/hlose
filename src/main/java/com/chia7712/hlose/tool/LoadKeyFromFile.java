@@ -288,7 +288,7 @@ public final class LoadKeyFromFile {
         .setBlockCacheEnabled(true));
     try (Connection conn = ConnectionFactory.createConnection();
       Admin admin = conn.getAdmin();) {
-      if (remove && admin.tableExists(name)) {
+      if (!readOnly && remove && admin.tableExists(name)) {
         admin.disableTable(name);
         admin.deleteTable(name);
       }
