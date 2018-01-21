@@ -26,11 +26,11 @@ public final class RowQueueBuilder<T> {
         return data;
       }
     };
-    return new RowQueueBuilder(idle);
+    return new RowQueueBuilder<byte[]>(idle);
   }
 
   public static <T> RowQueueBuilder<T> newBuilder(RowFunction<T> function) {
-    return new RowQueueBuilder(function);
+    return new RowQueueBuilder<T>(function);
   }
 
   private static final Log LOG = LogFactory.getLog(RowQueueBuilder.class);
@@ -126,7 +126,7 @@ public final class RowQueueBuilder<T> {
     return build(Executors.newFixedThreadPool(1 + consumers.size()));
   }
 
-  private RowQueue<T> build(Executor executor) {
+  private RowQueue<T> build(final ExecutorService executor) {
     check();
     final Supplier<RowLoader> supplier = this.supplier;
     final RowFunction<T> function = this.function;
@@ -195,6 +195,7 @@ public final class RowQueueBuilder<T> {
       public void await() throws InterruptedException {
         close.await();
         consumerLatch.await();
+        executor.shutdown();
       }
 
       @Override
