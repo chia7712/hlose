@@ -269,13 +269,12 @@ public final class LoadKeyFromFile {
     File rowKeyFile = new File(args[0]);
     boolean remove = Boolean.valueOf(args[1]);
     boolean readOnly = Boolean.valueOf(args[2]);
-    final byte[] family = Bytes.toBytes("fm");
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
     final TableName name = TableName.valueOf("testLoadLargeData");
     HTableDescriptor desc = new HTableDescriptor(name);
     desc.setRegionReplication(1).addFamily(
-      new HColumnDescriptor(family)
+      new HColumnDescriptor(Bytes.toBytes("fm"))
         .setDataBlockEncoding(DataBlockEncoding.NONE)
         .setBloomFilterType(BloomType.NONE)
         .setMaxVersions(3)
@@ -292,7 +291,13 @@ public final class LoadKeyFromFile {
         admin.disableTable(name);
         admin.deleteTable(name);
       }
-      admin.createTable(desc);
+      byte[] family;
+      if (admin.tableExists(name)) {
+        family = admin.getTableDescriptor(name).getColumnFamilies()[0].getName();
+      } else {
+        family = desc.getColumnFamilies()[0].getName();
+        admin.createTable(desc);
+      }
       Supplier<Table> supplier = new Supplier<Table> () {
 
         @Override
