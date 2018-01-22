@@ -16,6 +16,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeepDeletedCells;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -58,29 +59,34 @@ public class TestLoadKeyFromFile {
         .setInMemory(false)
         .setBlockCacheEnabled(true));
     UTIL.getHBaseAdmin().createTable(desc);
-    Supplier<Table> supplier = new Supplier<Table> () {
+    Supplier<Table> tableSupplier = new Supplier<Table> () {
 
       @Override
       public Table generate() throws IOException {
         return UTIL.getConnection().getTable(name);
       }
     };
+    Supplier<Admin> adminSupplier = new Supplier<Admin>() {
+      @Override
+      public Admin generate() throws IOException {
+        return UTIL.getConnection().getAdmin();
+      }
+    };
     Result result = LoadKeyFromFile.newJob(FAMILY, QUALIFIERS)
-//      .setPutRowRange(0, 20000000L)
-//      .setDeleteRowRange(671655L, 1671655L)
+      .setPutRowRange(0, Long.MAX_VALUE)
+      .setDeleteRowRange(671655L, 20582714L)
 //      .setPutRowRange(600000L, 17000000L)
 //      .setDeleteRowRange(671655L, 1000000L)
-      .setPutRowRange(10000, 100000)
-      .setDeleteRowRange(10000, 100000)
-      .setScanMetrics(true)
+//      .setScanMetrics(true)
       .setPutBatch(30)
       .setDeleteBatch(30)
       .setKeyFile(new File("/home/chia7712/rowkey.log"))
       .setPutThread(5)
       .setDeleteBatch(5)
       .setValue(new byte[15])
-      .setTableSupplier(supplier)
-      .run(Arrays.asList(Alter.FLUSH));
+      .setTableSupplier(tableSupplier)
+      .setAdminSupplier(adminSupplier)
+      .run(Arrays.asList(Alter.NONE, Alter.SPLIT, Alter.FLUSH));
     LOG.info("[CHIA] result:" + result);
     assertNotEquals(0, result.getPutCount());
     assertNotEquals(0, result.getDeleteCount());

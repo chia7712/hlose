@@ -7,10 +7,9 @@ import com.chia7712.hlose.Supplier;
 import com.chia7712.hlose.SupplierUtil;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Objects;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.TableName;
@@ -20,7 +19,7 @@ import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.filter.KeyOnlyFilter;
+import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class CountTable {
@@ -28,6 +27,7 @@ public class CountTable {
     return new CountTable();
   }
   private Supplier<Table> tableSupplier;
+  private Supplier<Admin> adminSupplier;
   private Alter alter = Alter.NONE;
   private boolean enableScanLog = false;
   private boolean enableScanMetrics = false;
@@ -49,14 +49,24 @@ public class CountTable {
     this.enableScanMetrics = enableScanMetrics;
     return this;
   }
+  CountTable setAdminSupplier(Supplier<Admin> adminSupplier) {
+    this.adminSupplier = adminSupplier;
+    return this;
+  }
 
+  private void check() {
+    Objects.requireNonNull(tableSupplier);
+    Objects.requireNonNull(adminSupplier);
+  }
   Counter run() throws Exception {
+    check();
     final Scan scan = new Scan()
-      .setFilter(new KeyOnlyFilter())
+      .setFilter(new FirstKeyOnlyFilter())
       .setScanMetricsEnabled(enableScanMetrics);
     if (enableScanLog) {
       scan.setAttribute("chia7712.log", Bytes.toBytes(alter.name()));
     }
+
     final List<byte[]> rowCollector = new ArrayList<>(2);
     Supplier<RowConsumer<byte[]>> rowConsumerSupplier = new Supplier<RowConsumer<byte[]>>() {
       @Override
@@ -93,7 +103,19 @@ public class CountTable {
           }
         }))
       .addConsumer(rowConsumerSupplier)
-      .build()) {
+      .build();
+      Admin admin = adminSupplier.generate()) {
+      LOG.info("[CHIA] alter:" + alter);
+      switch (alter) {
+        case SPLIT:
+          admin.split(table.getName());
+          break;
+        case FLUSH:
+          admin.flush(table.getName());
+          break;
+        default:
+          break;
+      }
       queue.await();
       return new Counter() {
         @Override

@@ -48,6 +48,7 @@ public final class LoadKeyFromFile {
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
   private Supplier<Table> tableSupplier;
+  private Supplier<Admin> adminSupplier;
   private File keyFile;
   private boolean enableScanLog = false;
   private boolean enableScanMetrics = false;
@@ -92,6 +93,10 @@ public final class LoadKeyFromFile {
     this.tableSupplier= tableSupplier;
     return this;
   }
+  LoadKeyFromFile setAdminSupplier(Supplier<Admin> adminSupplier) {
+    this.adminSupplier= adminSupplier;
+    return this;
+  }
   LoadKeyFromFile setKeyFile(File keyFile) {
     this.keyFile = keyFile;
     return this;
@@ -107,6 +112,7 @@ public final class LoadKeyFromFile {
   }
   private void check() {
     Objects.requireNonNull(tableSupplier);
+    Objects.requireNonNull(adminSupplier);
     Objects.requireNonNull(keyFile);
     Objects.requireNonNull(family);
     Objects.requireNonNull(value);
@@ -122,6 +128,7 @@ public final class LoadKeyFromFile {
       counters.add(CountTable.newJob()
         .setAlter(alter)
         .setTableSupplier(tableSupplier)
+        .setAdminSupplier(adminSupplier)
         .setScanLog(enableScanLog)
         .setScanMetrics(enableScanMetrics)
         .run());
