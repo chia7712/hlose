@@ -5,9 +5,12 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.TreeMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.TableName;
@@ -18,6 +21,7 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public final class SupplierUtil {
@@ -130,13 +134,20 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowLoader> toRowLoader(final Supplier<Table> supplier, final Scan scan) {
+  public static Supplier<RowLoader> toRowLoader(final Supplier<ResultScanner> supplier) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
         return new RowLoader() {
-          private final Table table = supplier.generate();
-          private final ResultScanner scanner = table.getScanner(scan);
+          @Override
+          public Map<String, Long> getMetrics() {
+            ScanMetrics metrics = scanner.getScanMetrics();
+            if (metrics == null) {
+              return Collections.emptyMap();
+            }
+            return new TreeMap<>(metrics.getMetricsMap());
+          }
+          private final ResultScanner scanner = supplier.generate();
           private final Iterator<Result> iter = scanner.iterator();
           @Override
           public boolean hasNext() {
@@ -155,8 +166,7 @@ public final class SupplierUtil {
 
           @Override
           public void close() throws Exception {
-            SupplierUtil.close(scanner);
-            SupplierUtil.close(table);
+            scanner.close();
           }
         };
       }
@@ -171,6 +181,13 @@ public final class SupplierUtil {
         return new RowLoader() {
           private final BufferedReader r = new BufferedReader(new FileReader(file));
           private String line = null;
+          private long count = 0;
+          @Override
+          public Map<String, Long> getMetrics() {
+            Map<String, Long> m = new TreeMap<>();
+            m.put("ROWS", count);
+            return m;
+          }
           @Override
           public void close() throws Exception {
             r.close();
@@ -205,6 +222,7 @@ public final class SupplierUtil {
             if (line == null) {
               try {
                 line = r.readLine();
+                ++count;
               } catch (IOException e) {
                 throw new RuntimeException(e);
               }

@@ -7,19 +7,131 @@ import com.chia7712.hlose.Supplier;
 import com.chia7712.hlose.SupplierUtil;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
+import org.apache.hadoop.hbase.filter.KeyOnlyFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class CountTable {
+  public static CountTable newJob() {
+    return new CountTable();
+  }
+  private Supplier<Table> tableSupplier;
+  private Alter alter = Alter.NONE;
+  private boolean enableScanLog = false;
+  private boolean enableScanMetrics = false;
+
+  CountTable setTableSupplier(Supplier<Table> tableSupplier) {
+    this.tableSupplier = tableSupplier;
+    return this;
+  }
+
+  CountTable setAlter(Alter alter) {
+    this.alter = alter;
+    return this;
+  }
+  CountTable setScanLog(boolean enableScanLog) {
+    this.enableScanLog = enableScanLog;
+    return this;
+  }
+  CountTable setScanMetrics(boolean enableScanMetrics) {
+    this.enableScanMetrics = enableScanMetrics;
+    return this;
+  }
+
+  Counter run() throws Exception {
+    final Scan scan = new Scan()
+      .setFilter(new KeyOnlyFilter())
+      .setScanMetricsEnabled(enableScanMetrics);
+    if (enableScanLog) {
+      scan.setAttribute("chia7712.log", Bytes.toBytes(alter.name()));
+    }
+    final List<byte[]> rowCollector = new ArrayList<>(2);
+    Supplier<RowConsumer<byte[]>> rowConsumerSupplier = new Supplier<RowConsumer<byte[]>>() {
+      @Override
+      public RowConsumer<byte[]> generate() throws IOException {
+        return new RowConsumer<byte[]>() {
+
+          @Override
+          public void close() throws Exception {
+          }
+
+          @Override
+          public void apply(byte[] bytes) throws IOException {
+            switch (rowCollector.size()) {
+            case 0:
+            case 1:
+              rowCollector.add(bytes);
+              break;
+            default:
+              rowCollector.set(1, bytes);
+              break;
+            }
+          }
+        };
+      }
+    };
+
+    try (Table table = tableSupplier.generate();
+      RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
+      .setPrefix(alter.name())
+      .setRowLoader(SupplierUtil.toRowLoader(new Supplier<ResultScanner>() {
+          @Override
+          public ResultScanner generate() throws IOException {
+            return table.getScanner(scan);
+          }
+        }))
+      .addConsumer(rowConsumerSupplier)
+      .build()) {
+      queue.await();
+      return new Counter() {
+        @Override
+        public Alter getAlter() {
+          return alter;
+        }
+
+        @Override
+        public long get() {
+          return queue.getAcceptedRowCount();
+        }
+
+        @Override
+        public byte[] getStartRow() {
+          return rowCollector.isEmpty() ? null : rowCollector.get(0);
+        }
+
+        @Override
+        public byte[] getEndRow() {
+          return rowCollector.isEmpty() ? null : rowCollector.get(rowCollector.size() - 1);
+        }
+
+        @Override
+        public Map<String, Long> getMetrics() {
+          return queue.getRowLoader().getMetrics();
+
+        }
+
+        @Override
+        public String toString() {
+          return alter.name() + ":" + get()
+            + "[" + (getStartRow() == null ? "null" : Bytes.toStringBinary(getStartRow())) + "]"
+            + "[" + (getEndRow() == null ? "null" : Bytes.toStringBinary(getEndRow())) + "]"
+            + getMetrics().toString();
+        }
+      };
+    }
+  }
   private static final Log LOG = LogFactory.getLog(LoadKeyFromFile.class);
   public static void main(String[] args) throws Exception {
     if (args.length <= 0) {
@@ -45,74 +157,17 @@ public class CountTable {
 
       List<Counter> counters = new ArrayList<>(alters.size());
       for (Alter alter : alters) {
-        Counter counter = runCount(supplier, new Scan(), alter);
+        Counter counter = CountTable.newJob()
+          .setTableSupplier(supplier)
+          .setAlter(alter)
+          .run();
         LOG.info("[CHIA] " + counter);
         counters.add(counter);
       }
       LOG.info("[CHIA] " + counters);
     }
   }
-  static Counter runCount(Supplier<Table> tableSupplier, Scan scan,
-    final Alter alter) throws Exception{
-    final List<byte[]> rowCollector = new ArrayList<>(2);
-    Supplier<RowConsumer<byte[]>> supplier = new Supplier<RowConsumer<byte[]>>() {
-      @Override
-      public RowConsumer<byte[]> generate() throws IOException {
-        return new RowConsumer<byte[]>() {
 
-          @Override
-          public void close() throws Exception {
-          }
-
-          @Override
-          public void apply(byte[] bytes) throws IOException {
-            switch (rowCollector.size()) {
-            case 0:
-            case 1:
-              rowCollector.add(bytes);
-              break;
-            default:
-              rowCollector.set(1, bytes);
-              break;
-            }
-          }
-        };
-      }
-    };
-    try (RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
-      .setPrefix(alter.name())
-      .setRowLoader(SupplierUtil.toRowLoader(tableSupplier, scan))
-      .addConsumer(supplier)
-      .build()) {
-      queue.await();
-      return new Counter() {
-        @Override
-        public Alter getAlter() {
-          return alter;
-        }
-
-        @Override
-        public long get() {
-          return queue.getAcceptedRowCount();
-        }
-
-        @Override
-        public byte[] getStartRow() {
-          return rowCollector.isEmpty() ? null : rowCollector.get(0);
-        }
-
-        @Override
-        public byte[] getEndRow() {
-          return rowCollector.isEmpty() ? null : rowCollector.get(rowCollector.size() - 1);
-        }
-
-        @Override
-        public String toString() {
-          return alter.name() + ":" + get()
-            + "[" + (getStartRow() == null ? "null" : Bytes.toStringBinary(getStartRow())) + "]"
-            + "[" + (getEndRow() == null ? "null" : Bytes.toStringBinary(getEndRow())) + "]";
-        }
-      };
-    }
+  private CountTable() {
   }
 }

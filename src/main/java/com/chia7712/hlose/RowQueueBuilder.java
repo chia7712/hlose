@@ -122,99 +122,136 @@ public final class RowQueueBuilder<T> {
     Objects.requireNonNull(function);
   }
 
-  public RowQueue<T> build() {
+  public RowQueue<T> build() throws Exception {
     return build(Executors.newFixedThreadPool(1 + consumers.size()));
   }
 
-  private RowQueue<T> build(final ExecutorService executor) {
+  private RowQueue<T> build(final ExecutorService executor) throws Exception {
     check();
-    final Supplier<RowLoader> supplier = this.supplier;
-    final RowFunction<T> function = this.function;
-    final BlockingQueue<T> rows = new ArrayBlockingQueue<>(capacity);
-    final AtomicBoolean stop = new AtomicBoolean(false);
-    final CountDownLatch close = new CountDownLatch(1);
-    final AtomicLong acceptedRows = new AtomicLong(0);
-    final long rowStart = this.rowStart;
-    final long rowEnd = this.rowEnd;
-    final String prefix = this.prefix;
-    final long timeToLog = this.timeToLog;
-    executor.execute(new Runnable() {
-      private long rowIndex = 0;
-      private long lastLog = System.currentTimeMillis();
 
-      @Override
-      public void run() {
-        try (RowLoader loader = supplier.generate()) {
-          while (!stop.get() && loader.hasNext()) {
-            byte[] row = loader.next();
-            ++rowIndex;
-            if (rowIndex >= rowStart && rowIndex <= rowEnd) {
-              acceptedRows.incrementAndGet();
-              rows.put(function.apply(row));
-            } else if (rowIndex > rowEnd) {
-              break;
-            }
-            if (System.currentTimeMillis() - lastLog > timeToLog) {
-              String msg =
-                "rowIndex:" + rowIndex + ", acceptedRows:" + acceptedRows + ", rowStart:" + rowStart
-                  + ", rowEnd:" + rowEnd + ", currentRow:" + (row == null ?
-                  "null" :
-                  Bytes.toStringBinary(row));
-              LOG.info("[-------------------" + prefix + "-------------------] " + msg);
-              lastLog = System.currentTimeMillis();
-            }
-          }
-        } catch (Exception e) {
-          LOG.error("interrupt the loader", e);
-        } finally {
-          stop.set(true);
-          close.countDown();
-          LOG.info("[-------------------" + prefix + "-------------------] " + "DONE:" + acceptedRows);
-        }
-      }
-    });
+    final RowLoadWorker<T> worker = new RowLoadWorker<T>(supplier, rowStart, rowEnd, capacity,
+      function, timeToLog, prefix);
 
-    RowTaker<T> taker = new RowTaker<T>() {
-      @Override
-      public T take() throws InterruptedException {
-        while (true) {
-          T rval = rows.poll(1, TimeUnit.SECONDS);
-          if (rval != null) {
-            return rval;
-          }
-          if (rows.isEmpty() && close.getCount() <= 0) {
-            return null;
-          }
-        }
-      }
-    };
 
-    final CountDownLatch consumerLatch = invokeConsumer(executor, taker);
+    executor.execute(worker);
+
+    final CountDownLatch consumerLatch = invokeConsumer(executor, worker);
     return new RowQueue<T>() {
       @Override
       public void await() throws InterruptedException {
-        close.await();
+        worker.await();
         consumerLatch.await();
         executor.shutdown();
       }
 
       @Override
       public boolean isClosed() {
-        return close.getCount() <= 0 && consumerLatch.getCount() <= 0;
+        return worker.isClosed() && consumerLatch.getCount() <= 0;
       }
 
       @Override
       public void close() throws IOException, InterruptedException {
-        stop.set(true);
+        worker.stop();
         await();
       }
 
       @Override
       public long getAcceptedRowCount() {
-        return acceptedRows.get();
+        return worker.getAcceptedRowCount();
+      }
+
+      @Override
+      public RowLoader getRowLoader() {
+        return worker.getLoader();
       }
     };
 
+  }
+
+  private static class RowLoadWorker<T> implements Runnable, RowTaker<T> {
+    private long rowIndex = 0;
+    private long lastLog = System.currentTimeMillis();
+    private final AtomicBoolean stop = new AtomicBoolean(false);
+    private final RowLoader loader;
+    private final long rowStart;
+    private final long rowEnd;
+    private final AtomicLong acceptedRows = new AtomicLong(0);
+    private final BlockingQueue<T> rows;
+    private final RowFunction<T> function;
+    private final String prefix;
+    private final long timeToLog;
+    private final CountDownLatch close = new CountDownLatch(1);
+    RowLoadWorker(Supplier<RowLoader> rowLoaderSupplier, long rowStart, long rowEnd,
+      int capacity, final RowFunction<T> function, long timeToLog, final String prefix) throws Exception {
+      loader = rowLoaderSupplier.generate();
+      this.rowEnd = rowEnd;
+      this.rowStart = rowStart;
+      this.rows = new ArrayBlockingQueue<>(capacity);
+      this.function = function;
+      this.timeToLog = timeToLog;
+      this.prefix = prefix;
+    }
+
+    public boolean isClosed() {
+      return close.getCount() <= 0;
+    }
+    @Override
+    public T take() throws InterruptedException {
+      while (true) {
+        T rval = rows.poll(1, TimeUnit.SECONDS);
+        if (rval != null) {
+          return rval;
+        }
+        if (rows.isEmpty() && close.getCount() <= 0) {
+          return null;
+        }
+      }
+    }
+    public RowLoader getLoader() {
+      return loader;
+    }
+
+    public void stop() {
+      stop.set(true);
+    }
+
+    public void await() throws InterruptedException {
+      close.await();
+    }
+
+    public long getAcceptedRowCount() {
+      return acceptedRows.get();
+    }
+    @Override
+    public void run() {
+      try (RowLoader loader = getLoader()) {
+        while (!stop.get() && loader.hasNext()) {
+          byte[] row = loader.next();
+          ++rowIndex;
+          if (rowIndex >= rowStart && rowIndex <= rowEnd) {
+            acceptedRows.incrementAndGet();
+            rows.put(function.apply(row));
+          } else if (rowIndex > rowEnd) {
+            break;
+          }
+          if (System.currentTimeMillis() - lastLog > timeToLog) {
+            String msg =
+              "rowIndex:" + rowIndex + ", acceptedRows:" + acceptedRows + ", rowStart:" + rowStart
+                + ", rowEnd:" + rowEnd + ", currentRow:" + (row == null ?
+                "null" :
+                Bytes.toStringBinary(row));
+            LOG.info("[-------------------" + prefix + "-------------------] " + msg);
+            lastLog = System.currentTimeMillis();
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("interrupt the loader", e);
+      } finally {
+        stop.set(true);
+        close.countDown();
+        LOG.info("[-------------------" + prefix + "-------------------] " + "DONE:" + acceptedRows);
+      }
+    }
   }
 
   private interface RowTaker<T> {

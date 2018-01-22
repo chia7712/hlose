@@ -25,7 +25,6 @@ import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -50,7 +49,8 @@ public final class LoadKeyFromFile {
   private long deleteRowEnd = 100;
   private Supplier<Table> tableSupplier;
   private File keyFile;
-  private Scan scan = new Scan();
+  private boolean enableScanLog = false;
+  private boolean enableScanMetrics = false;
   LoadKeyFromFile(byte[] family, Collection<byte[]> quals) {
     this.family = family;
     this.qualifiers = new ArrayList<>(quals);
@@ -97,9 +97,16 @@ public final class LoadKeyFromFile {
     return this;
   }
 
+  LoadKeyFromFile setScanLog(boolean enableScanLog) {
+    this.enableScanLog = enableScanLog;
+    return this;
+  }
+  LoadKeyFromFile setScanMetrics(boolean enableScanMetrics) {
+    this.enableScanMetrics = enableScanMetrics;
+    return this;
+  }
   private void check() {
     Objects.requireNonNull(tableSupplier);
-    Objects.requireNonNull(scan);
     Objects.requireNonNull(keyFile);
     Objects.requireNonNull(family);
     Objects.requireNonNull(value);
@@ -112,7 +119,12 @@ public final class LoadKeyFromFile {
     final long deleteCount = runDelete();
     final List<Counter> counters = new ArrayList<>(alters.size());
     for (final Alter alter : alters) {
-      counters.add(CountTable.runCount(tableSupplier, scan, alter));
+      counters.add(CountTable.newJob()
+        .setAlter(alter)
+        .setTableSupplier(tableSupplier)
+        .setScanLog(enableScanLog)
+        .setScanMetrics(enableScanMetrics)
+        .run());
     }
     return new Result() {
 

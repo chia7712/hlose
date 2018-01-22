@@ -45,8 +45,8 @@ public class TestLoadKeyFromFile {
   public void testLoadLargeData() throws Exception {
     final TableName name = TableName.valueOf("testLoadLargeData");
     HTableDescriptor desc = new HTableDescriptor(name);
-    desc.setRegionReplication(1).addFamily(
-      new HColumnDescriptor(FAMILY)
+    desc.setRegionReplication(1)
+      .addFamily(new HColumnDescriptor(FAMILY)
         .setDataBlockEncoding(DataBlockEncoding.NONE)
         .setBloomFilterType(BloomType.NONE)
         .setMaxVersions(3)
@@ -65,11 +65,14 @@ public class TestLoadKeyFromFile {
         return UTIL.getConnection().getTable(name);
       }
     };
-    List<Alter> alters = Arrays.asList(Alter.values());
-
     Result result = LoadKeyFromFile.newJob(FAMILY, QUALIFIERS)
-      .setPutRowRange(0, 20000000L)
-      .setDeleteRowRange(671655L, 1671655L)
+//      .setPutRowRange(0, 20000000L)
+//      .setDeleteRowRange(671655L, 1671655L)
+//      .setPutRowRange(600000L, 17000000L)
+//      .setDeleteRowRange(671655L, 1000000L)
+      .setPutRowRange(10000, 100000)
+      .setDeleteRowRange(10000, 100000)
+      .setScanMetrics(true)
       .setPutBatch(30)
       .setDeleteBatch(30)
       .setKeyFile(new File("/home/chia7712/rowkey.log"))
@@ -77,7 +80,7 @@ public class TestLoadKeyFromFile {
       .setDeleteBatch(5)
       .setValue(new byte[15])
       .setTableSupplier(supplier)
-      .run(alters);
+      .run(Arrays.asList(Alter.FLUSH));
     LOG.info("[CHIA] result:" + result);
     assertNotEquals(0, result.getPutCount());
     assertNotEquals(0, result.getDeleteCount());
