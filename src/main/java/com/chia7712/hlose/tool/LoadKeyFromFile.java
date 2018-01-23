@@ -216,7 +216,7 @@ public final class LoadKeyFromFile {
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
     Configuration config = HBaseConfiguration.create();
-    if (args.length > 1) {
+    if (args.length > 2) {
       config.set("hbase.zookeeper.quorum", args[2]);
     }
     try (Connection conn = ConnectionFactory.createConnection(config);
