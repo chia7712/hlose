@@ -51,7 +51,7 @@ public final class LoadKeyFromFile {
   private Supplier<Admin> adminSupplier;
   private File keyFile;
   private boolean enableScanLog = false;
-  private boolean enableScanMetrics = false;
+  private boolean enableScanMetrics = true;
   LoadKeyFromFile(byte[] family, Collection<byte[]> quals) {
     this.family = family;
     this.qualifiers = new ArrayList<>(quals);
@@ -234,26 +234,33 @@ public final class LoadKeyFromFile {
       }
       byte[] family = desc.getColumnFamilies()[0].getName();
       admin.createTable(desc);
-      Supplier<Table> supplier = new Supplier<Table> () {
+      Supplier<Table> tableSupplier = new Supplier<Table> () {
 
         @Override
         public Table generate() throws IOException {
           return conn.getTable(name);
         }
       };
-      List<Alter> alters = Arrays.asList(Alter.values());
+      Supplier<Admin> adminSupplier = new Supplier<Admin>() {
 
+        @Override
+        public Admin generate() throws IOException {
+          return conn.getAdmin();
+        }
+      };
       Result result = LoadKeyFromFile.newJob(family, qualifiers)
         .setPutRowRange(0, Long.MAX_VALUE)
         .setDeleteRowRange(671655L, 20582714L)
+        .setScanMetrics(true)
         .setPutBatch(30)
         .setDeleteBatch(30)
         .setKeyFile(rowKeyFile)
         .setPutThread(5)
         .setDeleteBatch(5)
         .setValue(new byte[15])
-        .setTableSupplier(supplier)
-        .run(alters);
+        .setTableSupplier(tableSupplier)
+        .setAdminSupplier(adminSupplier)
+        .run(Arrays.asList(Alter.values()));
       LOG.info("[CHIA] result:" + result);
     }
   }
