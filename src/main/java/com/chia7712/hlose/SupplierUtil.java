@@ -134,14 +134,14 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowLoader> toRowLoader(final Supplier<ResultScanner> supplier) {
+  public static Supplier<RowLoader> toRowLoader(final ResultScannerSupplier supplier) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
         return new RowLoader() {
           @Override
           public Map<String, Long> getMetrics() {
-            ScanMetrics metrics = scanner.getScanMetrics();
+            ScanMetrics metrics = supplier.getScan().getScanMetrics();
             if (metrics == null) {
               return Collections.emptyMap();
             }

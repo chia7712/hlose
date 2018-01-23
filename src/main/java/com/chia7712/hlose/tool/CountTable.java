@@ -1,5 +1,6 @@
 package com.chia7712.hlose.tool;
 
+import com.chia7712.hlose.ResultScannerSupplier;
 import com.chia7712.hlose.RowConsumer;
 import com.chia7712.hlose.RowQueue;
 import com.chia7712.hlose.RowQueueBuilder;
@@ -96,8 +97,13 @@ public class CountTable {
     try (Table table = tableSupplier.generate();
       RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
       .setPrefix(alter.name())
-      .setRowLoader(SupplierUtil.toRowLoader(new Supplier<ResultScanner>() {
-          @Override
+      .setRowLoader(SupplierUtil.toRowLoader(new ResultScannerSupplier() {
+        @Override
+        public Scan getScan() {
+          return scan;
+        }
+
+        @Override
           public ResultScanner generate() throws IOException {
             return table.getScanner(scan);
           }
