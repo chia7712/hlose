@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -206,34 +208,39 @@ public final class LoadKeyFromFile {
     }
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 1) {
-      throw new RuntimeException("Where is the row file? <file>");
+    if (args.length < 2) {
+      throw new RuntimeException("Where is the row file? <table name> <file> (hbase.zookeeper.quorum)");
     }
-    File rowKeyFile = new File(args[0]);
+    final TableName name = TableName.valueOf(args[0]);
+    File rowKeyFile = new File(args[1]);
     final List<byte[]> qualifiers =
       Arrays.asList(Bytes.toBytes("at"), Bytes.toBytes("ct"), Bytes.toBytes("gu"));
-    final TableName name = TableName.valueOf("testLoadLargeData");
-    HTableDescriptor desc = new HTableDescriptor(name);
-    desc.setRegionReplication(1).addFamily(
-      new HColumnDescriptor(Bytes.toBytes("fm"))
-        .setDataBlockEncoding(DataBlockEncoding.NONE)
-        .setBloomFilterType(BloomType.NONE)
-        .setMaxVersions(3)
-        .setCompressionType(Compression.Algorithm.GZ)
-        .setMinVersions(0)
-        .setTimeToLive(HConstants.FOREVER)
-        .setKeepDeletedCells(KeepDeletedCells.FALSE)
-        .setBlocksize(65536)
-        .setInMemory(false)
-        .setBlockCacheEnabled(true));
-    try (Connection conn = ConnectionFactory.createConnection();
+    Configuration config = HBaseConfiguration.create();
+    if (args.length > 1) {
+      config.set("hbase.zookeeper.quorum", args[2]);
+    }
+    try (Connection conn = ConnectionFactory.createConnection(config);
       Admin admin = conn.getAdmin();) {
+      byte[] family;
       if (admin.tableExists(name)) {
-        admin.disableTable(name);
-        admin.deleteTable(name);
+        family = admin.getTableDescriptor(name).getColumnFamilies()[0].getName();
+      } else {
+        HTableDescriptor desc = new HTableDescriptor(name);
+        desc.setRegionReplication(1).addFamily(
+          new HColumnDescriptor(Bytes.toBytes("fm"))
+            .setDataBlockEncoding(DataBlockEncoding.NONE)
+            .setBloomFilterType(BloomType.NONE)
+            .setMaxVersions(3)
+            .setCompressionType(Compression.Algorithm.GZ)
+            .setMinVersions(0)
+            .setTimeToLive(HConstants.FOREVER)
+            .setKeepDeletedCells(KeepDeletedCells.FALSE)
+            .setBlocksize(65536)
+            .setInMemory(false)
+            .setBlockCacheEnabled(true));
+        family = desc.getColumnFamilies()[0].getName();
+        admin.createTable(desc);
       }
-      byte[] family = desc.getColumnFamilies()[0].getName();
-      admin.createTable(desc);
       Supplier<Table> tableSupplier = new Supplier<Table> () {
 
         @Override
