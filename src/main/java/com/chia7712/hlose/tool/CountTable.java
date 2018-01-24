@@ -6,6 +6,7 @@ import com.chia7712.hlose.RowQueue;
 import com.chia7712.hlose.RowQueueBuilder;
 import com.chia7712.hlose.Supplier;
 import com.chia7712.hlose.SupplierUtil;
+import com.chia7712.hlose.TableSupplier;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +28,13 @@ public class CountTable {
   public static CountTable newJob() {
     return new CountTable();
   }
-  private Supplier<Table> tableSupplier;
+  private TableSupplier tableSupplier;
   private Supplier<Admin> adminSupplier;
   private Alter alter = Alter.NONE;
   private boolean enableScanLog = false;
   private boolean enableScanMetrics = false;
 
-  CountTable setTableSupplier(Supplier<Table> tableSupplier) {
+  CountTable setTableSupplier(TableSupplier tableSupplier) {
     this.tableSupplier = tableSupplier;
     return this;
   }
@@ -109,19 +110,8 @@ public class CountTable {
           }
         }))
       .addConsumer(rowConsumerSupplier)
-      .build();
-      Admin admin = adminSupplier.generate()) {
-      LOG.info("[CHIA] alter:" + alter);
-      switch (alter) {
-        case SPLIT:
-          admin.split(table.getName());
-          break;
-        case FLUSH:
-          admin.flush(table.getName());
-          break;
-        default:
-          break;
-      }
+      .build();) {
+      runAlter();
       queue.await();
       return new Counter() {
         @Override
@@ -160,6 +150,21 @@ public class CountTable {
       };
     }
   }
+
+  private void runAlter() throws Exception {
+    try (Admin admin = adminSupplier.generate()) {
+      switch (alter) {
+      case SPLIT:
+        admin.split(tableSupplier.getTableName());
+        break;
+      case FLUSH:
+        admin.flush(tableSupplier.getTableName());
+        break;
+      default:
+        break;
+      }
+    }
+  }
   private static final Log LOG = LogFactory.getLog(LoadKeyFromFile.class);
   public static void main(String[] args) throws Exception {
     if (args.length <= 0) {
@@ -175,7 +180,12 @@ public class CountTable {
       if (!admin.tableExists(name)) {
         throw new RuntimeException("Where is the table?");
       }
-      Supplier<Table> supplier = new Supplier<Table> () {
+      TableSupplier supplier = new TableSupplier() {
+
+        @Override
+        public TableName getTableName() {
+          return name;
+        }
 
         @Override
         public Table generate() throws IOException {

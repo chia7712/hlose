@@ -6,6 +6,7 @@ import com.chia7712.hlose.RowQueue;
 import com.chia7712.hlose.RowQueueBuilder;
 import com.chia7712.hlose.Supplier;
 import com.chia7712.hlose.SupplierUtil;
+import com.chia7712.hlose.TableSupplier;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -49,7 +50,7 @@ public final class LoadKeyFromFile {
   private int deleteThreads = 5;
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
-  private Supplier<Table> tableSupplier;
+  private TableSupplier tableSupplier;
   private Supplier<Admin> adminSupplier;
   private File keyFile;
   private boolean enableScanLog = false;
@@ -91,7 +92,7 @@ public final class LoadKeyFromFile {
     this.deleteThreads = threads;
     return this;
   }
-  LoadKeyFromFile setTableSupplier(Supplier<Table> tableSupplier) {
+  LoadKeyFromFile setTableSupplier(TableSupplier tableSupplier) {
     this.tableSupplier= tableSupplier;
     return this;
   }
@@ -241,7 +242,12 @@ public final class LoadKeyFromFile {
         family = desc.getColumnFamilies()[0].getName();
         admin.createTable(desc);
       }
-      Supplier<Table> tableSupplier = new Supplier<Table> () {
+      TableSupplier tableSupplier = new TableSupplier() {
+
+        @Override
+        public TableName getTableName() {
+          return name;
+        }
 
         @Override
         public Table generate() throws IOException {

@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
 import com.chia7712.hlose.Supplier;
+import com.chia7712.hlose.TableSupplier;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -59,7 +60,12 @@ public class TestLoadKeyFromFile {
         .setInMemory(false)
         .setBlockCacheEnabled(true));
     UTIL.getHBaseAdmin().createTable(desc);
-    Supplier<Table> tableSupplier = new Supplier<Table> () {
+    TableSupplier tableSupplier = new TableSupplier() {
+
+      @Override
+      public TableName getTableName() {
+        return name;
+      }
 
       @Override
       public Table generate() throws IOException {

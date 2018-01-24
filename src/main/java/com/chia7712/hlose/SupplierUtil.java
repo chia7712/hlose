@@ -26,11 +26,15 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public final class SupplierUtil {
   private static final Log LOG = LogFactory.getLog(SupplierUtil.class);
-  public static Supplier<Table> toTable(final Connection conn, final TableName name) {
-    return new Supplier<Table>() {
+  public static TableSupplier toTable(final Connection conn, final TableName name) {
+    return new TableSupplier() {
       @Override
       public Table generate() throws IOException {
         return conn.getTable(name);
+      }
+      @Override
+      public TableName getTableName() {
+        return name;
       }
     };
   }
@@ -64,7 +68,7 @@ public final class SupplierUtil {
     return toDeleteConsumer(toTable(conn, name), batch);
   }
 
-  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(final Supplier<Table> supplier, final int batch) {
+  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(final TableSupplier supplier, final int batch) {
     return new Supplier<RowConsumer<Delete>>() {
       @Override
       public RowConsumer<Delete> generate() throws IOException {
