@@ -113,32 +113,23 @@ public class CountTable {
 
   private static final Log LOG = LogFactory.getLog(LoadKeyFromFile.class);
   public static void main(String[] args) throws Exception {
-    if (args.length <= 0) {
-      throw new RuntimeException("Where is the alters(none, flush, split)? <alter>");
+    if (args.length != 1) {
+      throw new RuntimeException("Give me the table name, please?");
     }
-    List<Alter> alters = new ArrayList<>(args.length);
-    for (String arg : args) {
-      alters.add(Alter.valueOf(arg.toUpperCase()));
-    }
-    final TableName name = TableName.valueOf("testLoadLargeData");
+
+    final TableName name = TableName.valueOf(args[0]);
     try (Connection conn = ConnectionFactory.createConnection();
       Admin admin = conn.getAdmin();
       Table table = conn.getTable(name)) {
       if (!admin.tableExists(name)) {
         throw new RuntimeException("Where is the table?");
       }
-
-      List<Counter> counters = new ArrayList<>(alters.size());
-      for (Alter alter : alters) {
-        Counter counter = CountTable.newJob()
-          .setTableSupplier(SupplierUtil.toResultScannerSupplier(table,
-            new Scan().setScanMetricsEnabled(true)))
-          .setPrefix(alter.name())
-          .run();
-        LOG.info("[CHIA] " + counter);
-        counters.add(counter);
-      }
-      LOG.info("[CHIA] " + counters);
+      Counter counter = CountTable.newJob()
+        .setTableSupplier(SupplierUtil.toResultScannerSupplier(table,
+          new Scan().setScanMetricsEnabled(true)))
+        .setPrefix(Alter.NONE.name())
+        .run();
+      LOG.info("[CHIA] " + counter);
     }
   }
 
