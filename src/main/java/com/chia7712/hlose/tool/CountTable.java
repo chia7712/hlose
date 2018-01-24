@@ -1,12 +1,11 @@
 package com.chia7712.hlose.tool;
 
-import com.chia7712.hlose.ResultScannerSupplier;
+import com.chia7712.hlose.ResultScanner;
 import com.chia7712.hlose.RowConsumer;
 import com.chia7712.hlose.RowQueue;
 import com.chia7712.hlose.RowQueueBuilder;
 import com.chia7712.hlose.Supplier;
 import com.chia7712.hlose.SupplierUtil;
-import com.chia7712.hlose.TableSupplier;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,20 +17,18 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class CountTable {
   public static CountTable newJob() {
     return new CountTable();
   }
-  private ResultScannerSupplier resultScannerSupplier;
+  private Supplier<ResultScanner> resultScannerSupplier;
   private String prefix = "";
 
-  CountTable setTableSupplier(ResultScannerSupplier resultScannerSupplier) {
+  CountTable setTableSupplier(Supplier<ResultScanner> resultScannerSupplier) {
     this.resultScannerSupplier = resultScannerSupplier;
     return this;
   }
@@ -130,29 +127,12 @@ public class CountTable {
       if (!admin.tableExists(name)) {
         throw new RuntimeException("Where is the table?");
       }
-      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
-        private final Scan scan = new Scan();
-
-        @Override
-        public Scan getScan() {
-          return scan;
-        }
-
-        @Override
-        public TableName getTableName() {
-          return name;
-        }
-
-        @Override
-        public ResultScanner generate() throws IOException {
-          return table.getScanner(scan);
-        }
-      };
 
       List<Counter> counters = new ArrayList<>(alters.size());
       for (Alter alter : alters) {
         Counter counter = CountTable.newJob()
-          .setTableSupplier(resultScannerSupplier)
+          .setTableSupplier(SupplierUtil.toResultScannerSupplier(table,
+            new Scan().setScanMetricsEnabled(true)))
           .setPrefix(alter.name())
           .run();
         LOG.info("[CHIA] " + counter);

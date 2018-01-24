@@ -1,6 +1,5 @@
 package com.chia7712.hlose.tool;
 
-import com.chia7712.hlose.ResultScannerSupplier;
 import com.chia7712.hlose.RowConsumer;
 import com.chia7712.hlose.RowFunction;
 import com.chia7712.hlose.RowQueue;
@@ -29,7 +28,6 @@ import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
@@ -114,16 +112,6 @@ public final class LoadKeyFromFile {
     check();
     final long putCount = runPut();
     final long deleteCount = runDelete();
-//    final List<Counter> counters = new ArrayList<>(alters.size());
-//    for (final Alter alter : alters) {
-//      counters.add(CountTable.newJob()
-//        .setAlter(alter)
-//        .setTableSupplier(tableSupplier)
-//        .setAdminSupplier(adminSupplier)
-//        .setScanLog(enableScanLog)
-//        .setScanMetrics(enableScanMetrics)
-//        .run());
-//    }
     return new Result() {
 
       @Override
@@ -136,10 +124,6 @@ public final class LoadKeyFromFile {
         return deleteCount;
       }
 
-//      @Override
-//      public List<Counter> getCounters() {
-//        return counters;
-//      }
       @Override
       public String toString() {
         return "putCount:" + (putCount < 0 ? "N/A" : putCount)
@@ -230,37 +214,6 @@ public final class LoadKeyFromFile {
         family = desc.getColumnFamilies()[0].getName();
         admin.createTable(desc);
       }
-      TableSupplier tableSupplier = new TableSupplier() {
-
-        @Override
-        public TableName getTableName() {
-          return name;
-        }
-
-        @Override
-        public Table generate() throws IOException {
-          return conn.getTable(name);
-        }
-      };
-
-      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
-        private final Scan scan = new Scan();
-        @Override
-        public ResultScanner generate() throws IOException {
-          return table.getScanner(scan);
-        }
-
-        @Override
-        public Scan getScan() {
-          return scan;
-        }
-
-        @Override
-        public TableName getTableName() {
-          return name;
-        }
-      };
-
       Result result = LoadKeyFromFile.newJob(family, qualifiers)
         .setPutRowRange(0, Long.MAX_VALUE)
         .setDeleteRowRange(671655L, 20582714L)
@@ -270,7 +223,7 @@ public final class LoadKeyFromFile {
         .setPutThread(5)
         .setDeleteBatch(5)
         .setValue(new byte[15])
-        .setTableSupplier(tableSupplier)
+        .setTableSupplier(SupplierUtil.toTableSupplier(conn, name))
         .run();
       LOG.info("[CHIA] " + result);
       for (Alter alter : Alter.values()) {
@@ -280,7 +233,8 @@ public final class LoadKeyFromFile {
           default:break;
         }
         Counter counter = CountTable.newJob()
-          .setTableSupplier(resultScannerSupplier)
+          .setTableSupplier(SupplierUtil.toResultScannerSupplier(table,
+            new Scan().setScanMetricsEnabled(true)))
           .setPrefix(alter.name())
           .run();
         LOG.info("[CHIA] " + counter);

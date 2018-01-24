@@ -3,7 +3,7 @@ package com.chia7712.hlose.tool;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-import com.chia7712.hlose.ResultScannerSupplier;
+import com.chia7712.hlose.SupplierUtil;
 import com.chia7712.hlose.TableSupplier;
 import java.io.File;
 import java.io.IOException;
@@ -17,7 +17,6 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeepDeletedCells;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
@@ -61,19 +60,6 @@ public class TestLoadKeyFromFile {
         .setInMemory(false)
         .setBlockCacheEnabled(true));
     UTIL.getHBaseAdmin().createTable(desc);
-    TableSupplier tableSupplier = new TableSupplier() {
-
-      @Override
-      public TableName getTableName() {
-        return name;
-      }
-
-      @Override
-      public Table generate() throws IOException {
-        return UTIL.getConnection().getTable(name);
-      }
-    };
-
     Result result = LoadKeyFromFile.newJob(FAMILY, QUALIFIERS)
       .setPutRowRange(0, Long.MAX_VALUE)
       .setDeleteRowRange(671655L, 20582714L)
@@ -83,33 +69,17 @@ public class TestLoadKeyFromFile {
       .setPutThread(5)
       .setDeleteBatch(5)
       .setValue(new byte[15])
-      .setTableSupplier(tableSupplier)
+      .setTableSupplier(SupplierUtil.toTableSupplier(UTIL.getConnection(), name))
       .run();
     LOG.info("[CHIA] " + result);
     assertNotEquals(0, result.getPutCount());
     assertNotEquals(0, result.getDeleteCount());
 
     try (final Table table = UTIL.getConnection().getTable(name)) {
-      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
-        private final Scan scan = new Scan();
-        @Override
-        public ResultScanner generate() throws IOException {
-          return table.getScanner(scan);
-        }
-
-        @Override
-        public Scan getScan() {
-          return scan;
-        }
-
-        @Override
-        public TableName getTableName() {
-          return name;
-        }
-      };
       for (Alter alter : Alter.values()) {
         Counter counter = CountTable.newJob()
-          .setTableSupplier(resultScannerSupplier)
+          .setTableSupplier(SupplierUtil.toResultScannerSupplier(table,
+            new Scan().setScanMetricsEnabled(true)))
           .setPrefix(alter.name())
           .run();
         LOG.info("[CHIA] " + counter);

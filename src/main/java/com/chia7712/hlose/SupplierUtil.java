@@ -18,7 +18,6 @@ import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
@@ -26,7 +25,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public final class SupplierUtil {
   private static final Log LOG = LogFactory.getLog(SupplierUtil.class);
-  public static TableSupplier toTable(final Connection conn, final TableName name) {
+  public static TableSupplier toTableSupplier(final Connection conn, final TableName name) {
     return new TableSupplier() {
       @Override
       public Table generate() throws IOException {
@@ -37,35 +36,6 @@ public final class SupplierUtil {
         return name;
       }
     };
-  }
-  public static Supplier<ResultScanner> toResultScanner(final Table table, final Scan scan) {
-    return new Supplier<ResultScanner>() {
-      @Override
-      public ResultScanner generate() throws IOException {
-        return table.getScanner(scan);
-      }
-    };
-  }
-
-  public static Supplier<RowConsumer<byte[]>> toNoneConsumer() {
-    return new Supplier<RowConsumer<byte[]>>() {
-      @Override
-      public RowConsumer<byte[]> generate() throws IOException {
-        return new RowConsumer<byte[]>() {
-          @Override
-          public void close() throws Exception {
-          }
-
-          @Override
-          public void apply(byte[] data) throws IOException {
-          }
-        };
-      }
-    };
-  }
-
-  public static Supplier<RowConsumer<Delete>> toDeleteConsumer(Connection conn, TableName name, int batch) {
-    return toDeleteConsumer(toTable(conn, name), batch);
   }
 
   public static Supplier<RowConsumer<Delete>> toDeleteConsumer(final TableSupplier supplier, final int batch) {
@@ -138,14 +108,24 @@ public final class SupplierUtil {
     };
   }
 
-  public static Supplier<RowLoader> toRowLoader(final ResultScannerSupplier supplier) {
+  public static Supplier<ResultScanner> toResultScannerSupplier(final Table table,
+    final Scan scan) {
+    return new Supplier<ResultScanner>() {
+      @Override
+      public ResultScanner generate() throws IOException {
+        return new ResultScannerImpl(table, scan);
+      }
+    };
+  }
+
+  public static Supplier<RowLoader> toRowLoader(final Supplier<ResultScanner> supplier) {
     return new Supplier<RowLoader>() {
       @Override
       public RowLoader generate() throws IOException {
         return new RowLoader() {
           @Override
           public Map<String, Long> getMetrics() {
-            ScanMetrics metrics = supplier.getScan().getScanMetrics();
+            ScanMetrics metrics = scanner.getScanMetrics();
             if (metrics == null) {
               return Collections.emptyMap();
             }
@@ -236,11 +216,54 @@ public final class SupplierUtil {
       }
     };
   }
-  private static void close(AutoCloseable c) {
-    try {
-      c.close();
-    } catch (Exception e) {
-      LOG.error(e);
+
+  private static class ResultScannerImpl implements ResultScanner {
+    private final org.apache.hadoop.hbase.client.ResultScanner scanner;
+    private final Scan scan;
+    private final TableName name;
+    ResultScannerImpl(Table table, final Scan scan) throws IOException {
+      this.scan = new Scan(scan);
+      this.scanner = table.getScanner(this.scan);
+      this.name = table.getName();
+    }
+    @Override
+    public Scan getScan() {
+      return scan;
+    }
+
+    @Override
+    public TableName getTableName() {
+      return name;
+    }
+
+    @Override
+    public Result next() throws IOException {
+      return scanner.next();
+    }
+
+    @Override
+    public Result[] next(int nbRows) throws IOException {
+      return scanner.next(nbRows);
+    }
+
+    @Override
+    public void close() {
+      scanner.close();
+    }
+
+    @Override
+    public boolean renewLease() {
+      return scanner.renewLease();
+    }
+
+    @Override
+    public ScanMetrics getScanMetrics() {
+      return scanner.getScanMetrics();
+    }
+
+    @Override
+    public Iterator<Result> iterator() {
+      return scanner.iterator();
     }
   }
 }
