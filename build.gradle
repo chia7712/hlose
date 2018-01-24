@@ -38,6 +38,10 @@ dependencies {
   testCompile "$libs.hadoopHdfs:tests"
 }
 
+test {
+  systemProperty "java.library.path", System.getProperty("java.library.path") + ":${rootDir}/src/test/resources/native"
+}
+
 task copyDeps(type: Copy) {
   into "$buildDir/libs"
   from configurations.compile
