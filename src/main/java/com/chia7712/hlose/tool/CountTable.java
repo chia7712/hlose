@@ -82,13 +82,13 @@ public class CountTable {
           @Override
           public void apply(byte[] bytes) throws IOException {
             switch (rowCollector.size()) {
-            case 0:
-            case 1:
-              rowCollector.add(bytes);
-              break;
-            default:
-              rowCollector.set(1, bytes);
-              break;
+              case 0:
+              case 1:
+                rowCollector.add(bytes);
+                break;
+              default:
+                rowCollector.set(1, bytes);
+                break;
             }
           }
         };

@@ -90,7 +90,7 @@ public class TestLoadKeyFromFile {
       .setValue(new byte[15])
       .setTableSupplier(tableSupplier)
       .setAdminSupplier(adminSupplier)
-      .run(Arrays.asList(Alter.NONE, Alter.SPLIT, Alter.FLUSH));
+      .run(Arrays.asList(Alter.values()));
     LOG.info("[CHIA] result:" + result);
     assertNotEquals(0, result.getPutCount());
     assertNotEquals(0, result.getDeleteCount());
