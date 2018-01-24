@@ -28,46 +28,25 @@ public class CountTable {
   public static CountTable newJob() {
     return new CountTable();
   }
-  private TableSupplier tableSupplier;
-  private Supplier<Admin> adminSupplier;
-  private Alter alter = Alter.NONE;
-  private boolean enableScanLog = false;
-  private boolean enableScanMetrics = false;
+  private ResultScannerSupplier resultScannerSupplier;
+  private String prefix = "";
 
-  CountTable setTableSupplier(TableSupplier tableSupplier) {
-    this.tableSupplier = tableSupplier;
+  CountTable setTableSupplier(ResultScannerSupplier resultScannerSupplier) {
+    this.resultScannerSupplier = resultScannerSupplier;
     return this;
   }
 
-  CountTable setAlter(Alter alter) {
-    this.alter = alter;
+  CountTable setPrefix(String prefix) {
+    this.prefix = prefix;
     return this;
   }
-  CountTable setScanLog(boolean enableScanLog) {
-    this.enableScanLog = enableScanLog;
-    return this;
-  }
-  CountTable setScanMetrics(boolean enableScanMetrics) {
-    this.enableScanMetrics = enableScanMetrics;
-    return this;
-  }
-  CountTable setAdminSupplier(Supplier<Admin> adminSupplier) {
-    this.adminSupplier = adminSupplier;
-    return this;
-  }
+
 
   private void check() {
-    Objects.requireNonNull(tableSupplier);
-    Objects.requireNonNull(adminSupplier);
+    Objects.requireNonNull(resultScannerSupplier);
   }
   Counter run() throws Exception {
     check();
-    final Scan scan = new Scan()
-      .setFilter(new FirstKeyOnlyFilter())
-      .setScanMetricsEnabled(enableScanMetrics);
-    if (enableScanLog) {
-      scan.setAttribute("chia7712.log", Bytes.toBytes(alter.name()));
-    }
 
     final List<byte[]> rowCollector = new ArrayList<>(2);
     Supplier<RowConsumer<byte[]>> rowConsumerSupplier = new Supplier<RowConsumer<byte[]>>() {
@@ -95,29 +74,13 @@ public class CountTable {
       }
     };
 
-    try (Table table = tableSupplier.generate();
-      RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
-      .setPrefix(alter.name())
-      .setRowLoader(SupplierUtil.toRowLoader(new ResultScannerSupplier() {
-        @Override
-        public Scan getScan() {
-          return scan;
-        }
-
-        @Override
-          public ResultScanner generate() throws IOException {
-            return table.getScanner(scan);
-          }
-        }))
+    try (RowQueue<byte[]> queue = RowQueueBuilder.newBuilder()
+      .setPrefix(prefix)
+      .setRowLoader(SupplierUtil.toRowLoader(resultScannerSupplier))
       .addConsumer(rowConsumerSupplier)
       .build();) {
-      runAlter();
       queue.await();
       return new Counter() {
-        @Override
-        public Alter getAlter() {
-          return alter;
-        }
 
         @Override
         public long get() {
@@ -142,7 +105,7 @@ public class CountTable {
 
         @Override
         public String toString() {
-          return alter.name() + ":" + get()
+          return prefix + ":" + get()
             + "[" + (getStartRow() == null ? "null" : Bytes.toStringBinary(getStartRow())) + "]"
             + "[" + (getEndRow() == null ? "null" : Bytes.toStringBinary(getEndRow())) + "]"
             + getMetrics().toString();
@@ -151,20 +114,6 @@ public class CountTable {
     }
   }
 
-  private void runAlter() throws Exception {
-    try (Admin admin = adminSupplier.generate()) {
-      switch (alter) {
-      case SPLIT:
-        admin.split(tableSupplier.getTableName());
-        break;
-      case FLUSH:
-        admin.flush(tableSupplier.getTableName());
-        break;
-      default:
-        break;
-      }
-    }
-  }
   private static final Log LOG = LogFactory.getLog(LoadKeyFromFile.class);
   public static void main(String[] args) throws Exception {
     if (args.length <= 0) {
@@ -176,11 +125,18 @@ public class CountTable {
     }
     final TableName name = TableName.valueOf("testLoadLargeData");
     try (Connection conn = ConnectionFactory.createConnection();
-      Admin admin = conn.getAdmin();) {
+      Admin admin = conn.getAdmin();
+      Table table = conn.getTable(name)) {
       if (!admin.tableExists(name)) {
         throw new RuntimeException("Where is the table?");
       }
-      TableSupplier supplier = new TableSupplier() {
+      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
+        private final Scan scan = new Scan();
+
+        @Override
+        public Scan getScan() {
+          return scan;
+        }
 
         @Override
         public TableName getTableName() {
@@ -188,16 +144,16 @@ public class CountTable {
         }
 
         @Override
-        public Table generate() throws IOException {
-          return conn.getTable(name);
+        public ResultScanner generate() throws IOException {
+          return table.getScanner(scan);
         }
       };
 
       List<Counter> counters = new ArrayList<>(alters.size());
       for (Alter alter : alters) {
         Counter counter = CountTable.newJob()
-          .setTableSupplier(supplier)
-          .setAlter(alter)
+          .setTableSupplier(resultScannerSupplier)
+          .setPrefix(alter.name())
           .run();
         LOG.info("[CHIA] " + counter);
         counters.add(counter);

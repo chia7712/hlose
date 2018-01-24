@@ -5,5 +5,4 @@ import java.util.List;
 public interface Result {
   long getPutCount();
   long getDeleteCount();
-  List<Counter> getCounters();
 }

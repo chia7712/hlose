@@ -3,7 +3,7 @@ package com.chia7712.hlose.tool;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-import com.chia7712.hlose.Supplier;
+import com.chia7712.hlose.ResultScannerSupplier;
 import com.chia7712.hlose.TableSupplier;
 import java.io.File;
 import java.io.IOException;
@@ -17,7 +17,8 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeepDeletedCells;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -72,16 +73,10 @@ public class TestLoadKeyFromFile {
         return UTIL.getConnection().getTable(name);
       }
     };
-    Supplier<Admin> adminSupplier = new Supplier<Admin>() {
-      @Override
-      public Admin generate() throws IOException {
-        return UTIL.getConnection().getAdmin();
-      }
-    };
+
     Result result = LoadKeyFromFile.newJob(FAMILY, QUALIFIERS)
       .setPutRowRange(0, Long.MAX_VALUE)
       .setDeleteRowRange(671655L, 20582714L)
-      .setScanMetrics(true)
       .setPutBatch(30)
       .setDeleteBatch(30)
       .setKeyFile(new File("/home/chia7712/rowkey.log"))
@@ -89,14 +84,37 @@ public class TestLoadKeyFromFile {
       .setDeleteBatch(5)
       .setValue(new byte[15])
       .setTableSupplier(tableSupplier)
-      .setAdminSupplier(adminSupplier)
-      .run(Arrays.asList(Alter.values()));
-    LOG.info("[CHIA] result:" + result);
+      .run();
+    LOG.info("[CHIA] " + result);
     assertNotEquals(0, result.getPutCount());
     assertNotEquals(0, result.getDeleteCount());
-    for (Counter counter : result.getCounters()) {
-      assertEquals("counter:" + counter, result.getPutCount() - result.getDeleteCount()
-        , counter.get());
+
+    try (final Table table = UTIL.getConnection().getTable(name)) {
+      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
+        private final Scan scan = new Scan();
+        @Override
+        public ResultScanner generate() throws IOException {
+          return table.getScanner(scan);
+        }
+
+        @Override
+        public Scan getScan() {
+          return scan;
+        }
+
+        @Override
+        public TableName getTableName() {
+          return name;
+        }
+      };
+      for (Alter alter : Alter.values()) {
+        Counter counter = CountTable.newJob()
+          .setTableSupplier(resultScannerSupplier)
+          .setPrefix(alter.name())
+          .run();
+        LOG.info("[CHIA] " + counter);
+        assertEquals(result.getPutCount() - result.getDeleteCount(), counter.get());
+      }
     }
   }
 }

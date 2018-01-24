@@ -1,5 +1,6 @@
 package com.chia7712.hlose.tool;
 
+import com.chia7712.hlose.ResultScannerSupplier;
 import com.chia7712.hlose.RowConsumer;
 import com.chia7712.hlose.RowFunction;
 import com.chia7712.hlose.RowQueue;
@@ -28,6 +29,8 @@ import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -51,10 +54,7 @@ public final class LoadKeyFromFile {
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
   private TableSupplier tableSupplier;
-  private Supplier<Admin> adminSupplier;
   private File keyFile;
-  private boolean enableScanLog = false;
-  private boolean enableScanMetrics = true;
   LoadKeyFromFile(byte[] family, Collection<byte[]> quals) {
     this.family = family;
     this.qualifiers = new ArrayList<>(quals);
@@ -96,46 +96,34 @@ public final class LoadKeyFromFile {
     this.tableSupplier= tableSupplier;
     return this;
   }
-  LoadKeyFromFile setAdminSupplier(Supplier<Admin> adminSupplier) {
-    this.adminSupplier= adminSupplier;
-    return this;
-  }
+
   LoadKeyFromFile setKeyFile(File keyFile) {
     this.keyFile = keyFile;
     return this;
   }
 
-  LoadKeyFromFile setScanLog(boolean enableScanLog) {
-    this.enableScanLog = enableScanLog;
-    return this;
-  }
-  LoadKeyFromFile setScanMetrics(boolean enableScanMetrics) {
-    this.enableScanMetrics = enableScanMetrics;
-    return this;
-  }
   private void check() {
     Objects.requireNonNull(tableSupplier);
-    Objects.requireNonNull(adminSupplier);
     Objects.requireNonNull(keyFile);
     Objects.requireNonNull(family);
     Objects.requireNonNull(value);
     Objects.requireNonNull(qualifiers);
   }
 
-  Result run(List<Alter> alters) throws Exception {
+  Result run() throws Exception {
     check();
     final long putCount = runPut();
     final long deleteCount = runDelete();
-    final List<Counter> counters = new ArrayList<>(alters.size());
-    for (final Alter alter : alters) {
-      counters.add(CountTable.newJob()
-        .setAlter(alter)
-        .setTableSupplier(tableSupplier)
-        .setAdminSupplier(adminSupplier)
-        .setScanLog(enableScanLog)
-        .setScanMetrics(enableScanMetrics)
-        .run());
-    }
+//    final List<Counter> counters = new ArrayList<>(alters.size());
+//    for (final Alter alter : alters) {
+//      counters.add(CountTable.newJob()
+//        .setAlter(alter)
+//        .setTableSupplier(tableSupplier)
+//        .setAdminSupplier(adminSupplier)
+//        .setScanLog(enableScanLog)
+//        .setScanMetrics(enableScanMetrics)
+//        .run());
+//    }
     return new Result() {
 
       @Override
@@ -148,15 +136,14 @@ public final class LoadKeyFromFile {
         return deleteCount;
       }
 
-      @Override
-      public List<Counter> getCounters() {
-        return counters;
-      }
+//      @Override
+//      public List<Counter> getCounters() {
+//        return counters;
+//      }
       @Override
       public String toString() {
         return "putCount:" + (putCount < 0 ? "N/A" : putCount)
-            + " deleteCount:" + (deleteCount < 0 ? "N/A" : deleteCount)
-            + " " + counters.toString();
+            + " deleteCount:" + (deleteCount < 0 ? "N/A" : deleteCount);
       }
     };
   }
@@ -221,7 +208,8 @@ public final class LoadKeyFromFile {
       config.set("hbase.zookeeper.quorum", args[2]);
     }
     try (Connection conn = ConnectionFactory.createConnection(config);
-      Admin admin = conn.getAdmin();) {
+      Admin admin = conn.getAdmin();
+      Table table = conn.getTable(name)) {
       byte[] family;
       if (admin.tableExists(name)) {
         family = admin.getTableDescriptor(name).getColumnFamilies()[0].getName();
@@ -254,17 +242,28 @@ public final class LoadKeyFromFile {
           return conn.getTable(name);
         }
       };
-      Supplier<Admin> adminSupplier = new Supplier<Admin>() {
+
+      ResultScannerSupplier resultScannerSupplier = new ResultScannerSupplier() {
+        private final Scan scan = new Scan();
+        @Override
+        public ResultScanner generate() throws IOException {
+          return table.getScanner(scan);
+        }
 
         @Override
-        public Admin generate() throws IOException {
-          return conn.getAdmin();
+        public Scan getScan() {
+          return scan;
+        }
+
+        @Override
+        public TableName getTableName() {
+          return name;
         }
       };
+
       Result result = LoadKeyFromFile.newJob(family, qualifiers)
         .setPutRowRange(0, Long.MAX_VALUE)
         .setDeleteRowRange(671655L, 20582714L)
-        .setScanMetrics(true)
         .setPutBatch(30)
         .setDeleteBatch(30)
         .setKeyFile(rowKeyFile)
@@ -272,9 +271,20 @@ public final class LoadKeyFromFile {
         .setDeleteBatch(5)
         .setValue(new byte[15])
         .setTableSupplier(tableSupplier)
-        .setAdminSupplier(adminSupplier)
-        .run(Arrays.asList(Alter.values()));
-      LOG.info("[CHIA] result:" + result);
+        .run();
+      LOG.info("[CHIA] " + result);
+      for (Alter alter : Alter.values()) {
+        switch (alter) {
+          case SPLIT: admin.split(name);break;
+          case FLUSH: admin.flush(name);break;
+          default:break;
+        }
+        Counter counter = CountTable.newJob()
+          .setTableSupplier(resultScannerSupplier)
+          .setPrefix(alter.name())
+          .run();
+        LOG.info("[CHIA] " + counter);
+      }
     }
   }
 }
