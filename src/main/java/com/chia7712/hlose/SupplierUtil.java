@@ -125,7 +125,7 @@ public final class SupplierUtil {
         return new RowLoader() {
           @Override
           public Map<String, Long> getMetrics() {
-            ScanMetrics metrics = scanner.getScanMetrics();
+            ScanMetrics metrics = scanner.getScan().getScanMetrics();
             if (metrics == null) {
               return Collections.emptyMap();
             }

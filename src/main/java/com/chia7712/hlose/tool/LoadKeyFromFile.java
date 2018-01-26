@@ -51,13 +51,22 @@ public final class LoadKeyFromFile {
   private int deleteThreads = 5;
   private long deleteRowStart = 0;
   private long deleteRowEnd = 100;
+  private boolean enablePUt = true;
+  private boolean enableDelete = true;
   private TableSupplier tableSupplier;
   private File keyFile;
   LoadKeyFromFile(byte[] family, Collection<byte[]> quals) {
     this.family = family;
     this.qualifiers = new ArrayList<>(quals);
   }
-
+  LoadKeyFromFile disablePut() {
+    this.enablePUt = false;
+    return this;
+  }
+  LoadKeyFromFile disableDelete() {
+    this.enableDelete = false;
+    return this;
+  }
   LoadKeyFromFile setValue(byte[] value) {
     this.value = value;
     return this;
@@ -110,8 +119,8 @@ public final class LoadKeyFromFile {
 
   Result run() throws Exception {
     check();
-    final long putCount = runPut();
-    final long deleteCount = runDelete();
+    final long putCount = enablePUt ? runPut() : -1;
+    final long deleteCount = enableDelete ? runDelete() : -1;
     return new Result() {
 
       @Override
